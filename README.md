@@ -58,7 +58,7 @@ python SRPlayer.py
 | `lektorium.txt` | lektorium.su |
 | `svidetel.txt` | svidetel.su |
 | `reportage.txt` | reportage.su |
-| `theatrologia.txt` | тtheatrologia.su |
+| `theatrologia.txt` | theatrologia.su |
 
 Формат строки: `ID<TAB>Название записи`.
 
