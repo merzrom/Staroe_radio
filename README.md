@@ -56,9 +56,9 @@ python SRPlayer.py
 |---|---|
 | `staroeradio.txt` | staroeradio.ru |
 | `lektorium.txt` | lektorium.su |
-| `svidetel.txt` | архив "Свидетель" |
-| `reportage.txt` | репортажи |
-| `theatrologia.txt` | театральные записи |
+| `svidetel.txt` | svidetel.su |
+| `reportage.txt` | reportage.su |
+| `theatrologia.txt` | тtheatrologia.su |
 
 Формат строки: `ID<TAB>Название записи`.
 
