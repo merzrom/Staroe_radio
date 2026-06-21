@@ -1,0 +1,73 @@
+{
+  "results_tags": {
+    "number": {
+      "foreground": "#979695",
+      "description": "Номер трека"
+    },
+    "title": {
+      "foreground": "#61A0F3",
+      "description": "Название трека"
+    },
+    "date_header": {
+      "foreground": "#FFD54F",
+      "description": "Заголовок даты в программе"
+    },
+    "time_text": {
+      "foreground": "#888888",
+      "description": "Время передачи в программе"
+    },
+    "selected": {
+      "background": "#1E3A8A",
+      "foreground": "#FFFFFF",
+      "description": "Выбранная строка"
+    }
+  },
+  "log_tags": {
+    "timestamp": {
+      "foreground": "#B0BEC5",
+      "description": "Временная метка"
+    },
+    "success": {
+      "foreground": "#81C784",
+      "description": "Успех"
+    },
+    "error": {
+      "foreground": "#E57373",
+      "description": "Ошибка"
+    },
+    "warning": {
+      "foreground": "#FFB74D",
+      "description": "Предупреждение"
+    },
+    "info": {
+      "foreground": "#64B5F6",
+      "description": "Информация"
+    }
+  },
+  "player_labels": {
+    "current_track": {
+      "foreground": "#D5B491",
+      "background": "#212121",
+      "font_size": 11,
+      "font_weight": "italic",
+      "description": "Текущий трек в плеере"
+    },
+    "volume_label": {
+      "foreground": "#FFD700",
+      "description": "Проценты громкости"
+    },
+    "time_label": {
+      "foreground": "#4ECDC4",
+      "description": "Время в прогресс-баре"
+    }
+  },
+  "track_info": {
+    "foreground": "#64B5F6",
+    "background": "#030303",
+    "header_foreground": "#FFB74D",
+    "link_foreground": "#4ECDC4",
+    "font_size": 10,
+    "font_weight": "normal",
+    "description": "Область описания трека"
+  }
+}

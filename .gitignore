@@ -1,0 +1,33 @@
+# Runtime / user data — не должны попадать в репозиторий
+player_state.json
+favorites.txt
+History/
+SRPlayer/
+
+# Загруженные плейлисты и треки (если запускать из корня репо)
+*.m3u
+*.mp3
+
+# VLC бинарники и плагины (распространяются отдельно)
+*.dll
+plugins/
+
+# PyInstaller
+build/
+dist/
+*.spec.bak
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

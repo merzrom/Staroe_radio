@@ -1,0 +1,4 @@
+ttkbootstrap
+python-vlc
+beautifulsoup4
+mutagen
