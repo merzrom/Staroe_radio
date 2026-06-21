@@ -1,7 +1,7 @@
 # Staroe_radio
 
 Десктопный аудиоплеер для потокового прослушивания и скачивания записей проекта "Старое радио"
-с русскоязычных аудиоархивов (staroeradio.ru, lektorium.su, reportage.su, svidetel.su, theatrologia.su,).
+(аудиоархивы: staroeradio.ru, lektorium.su, reportage.su, svidetel.su, theatrologia.su).
 
 Написан на Python (tkinter + ttkbootstrap), воспроизведение — через libVLC.
 
