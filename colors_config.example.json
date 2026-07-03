@@ -22,11 +22,11 @@
       "description": "Выбранная строка"
     }
   },
+  "results_area": {
+    "background": "#000000",
+    "description": "Фон области результатов поиска"
+  },
   "log_tags": {
-    "timestamp": {
-      "foreground": "#B0BEC5",
-      "description": "Временная метка"
-    },
     "success": {
       "foreground": "#81C784",
       "description": "Успех"
@@ -44,30 +44,47 @@
       "description": "Информация"
     }
   },
+  "log_area": {
+    "background": "#000000",
+    "description": "Фон области лога"
+  },
   "player_labels": {
     "current_track": {
       "foreground": "#D5B491",
-      "background": "#212121",
+      "background": "#000000",
       "font_size": 11,
-      "font_weight": "italic",
+      "font_weight": "normal",
+      "wraplength": 350,
       "description": "Текущий трек в плеере"
     },
+    "player_area": {
+      "background": "#000000",
+      "description": "Фон области плеера"
+    },
     "volume_label": {
-      "foreground": "#FFD700",
-      "description": "Проценты громкости"
+      "foreground": "#696c70",
+      "description": "Эмодзи громкости и проценты"
     },
     "time_label": {
-      "foreground": "#4ECDC4",
+      "foreground": "#696c70",
       "description": "Время в прогресс-баре"
     }
   },
   "track_info": {
     "foreground": "#64B5F6",
-    "background": "#030303",
+    "background": "#000000",
     "header_foreground": "#FFB74D",
     "link_foreground": "#4ECDC4",
     "font_size": 10,
     "font_weight": "normal",
     "description": "Область описания трека"
+  },
+  "frame_labels": {
+    "title_foreground": "#696c70",
+    "description": "Цвет заголовков областей (Результаты поиска, Описание передачи, Плеер, Лог)"
+  },
+  "titlebar": {
+    "background": "#383838",
+    "description": "Цвет заголовка окна Windows (только Windows 10 build 19041+ и Windows 11)"
   }
 }

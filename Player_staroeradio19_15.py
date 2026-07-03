@@ -3,7 +3,7 @@ import os
 import sys
 import glob
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext, colorchooser, filedialog
+from tkinter import ttk, messagebox, scrolledtext, colorchooser, filedialog, simpledialog
 import ttkbootstrap
 
 # 1. СНАЧАЛА определяем директорию приложения
@@ -100,6 +100,7 @@ class StaroeRadioPlayer:
         self.current_results = []
         self.current_index = -1
         self.playing_track = None  # Трек, который реально сейчас воспроизводится (независимо от current_results)
+        self.playback_history = []  # Стек истории воспроизведения для кнопки ⏪
         # Папка, выбранная пользователем в последний раз для сохранения треков/плейлистов
         self.last_save_dir = os.path.join(os.path.expanduser("~"), "Downloads")
         self.is_playing = False
@@ -134,6 +135,12 @@ class StaroeRadioPlayer:
         # Таймер обновления
         self.update_position()
 
+        # Цвет заголовка окна Windows — нужен hwnd, который доступен только
+        # после полной отрисовки окна, поэтому откладываем через after()
+        tb_bg = self.log_colors.get("titlebar", {}).get("background")
+        if tb_bg:
+            self.root.after(150, lambda: self._set_titlebar_color(tb_bg))
+
     def setup_ui(self):
         # ========= PanedWindow для изменяемых границ =========
         paned_window = tk.PanedWindow(self.root, orient=tk.HORIZONTAL, bg="#212121", sashwidth=5)
@@ -143,45 +150,50 @@ class StaroeRadioPlayer:
         left_paned = tk.PanedWindow(paned_window, orient=tk.VERTICAL, bg="#212121", sashwidth=5)
         paned_window.add(left_paned, width=585)
 
+        _fl_fg = self.log_colors.get("frame_labels", {}).get("title_foreground", "#5E5C5E")
+        _ra_bg = self.log_colors.get("results_area", {}).get("background", "#0d0d0d")
+
         # Верхняя левая часть - результаты поиска
-        list_frame = tk.LabelFrame(left_paned, text="Результаты поиска", bg="#212121")
-        list_frame.config(fg="#5E5C5E")
-        left_paned.add(list_frame, height=350)
+        self.list_frame = tk.LabelFrame(left_paned, text="Результаты поиска", bg=_ra_bg)
+        self.list_frame.config(fg=_fl_fg)
+        left_paned.add(self.list_frame, height=350)
 
         # === ПАНЕЛЬ ПОИСКА ===
-        search_frame = ttk.Frame(list_frame)
-        search_frame.pack(fill=tk.X, pady=(0, 10))
+        self.search_frame = tk.Frame(self.list_frame, bg=_ra_bg)
+        self.search_frame.pack(fill=tk.X, pady=(0, 10))
 
-        self.search_entry = ttk.Entry(search_frame, width=40)
+        self.search_entry = ttk.Entry(self.search_frame, width=40)
         self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         self.search_entry.bind("<Return>", lambda e: self.search())
 
-        ttk.Button(search_frame, text="🔍", command=self.search).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(search_frame, text="📋", command=self.paste).pack(side=tk.LEFT, padx=(0, 3))
-        ttk.Button(search_frame, text="📻", command=self.load_program, width=4).pack(side=tk.LEFT, padx=(0, 3))
-        # ttk.Button(search_frame, text="💾 M3U",  command=self.save_m3u).pack(side=tk.LEFT, padx=(0, 3))
-        # ttk.Button(search_frame, text="💿 MP3",  command=self.download_selected_mp3).pack(side=tk.LEFT, padx=(0, 3))
-        # ttk.Button(search_frame, text="💿 Скачать все", command=self.download_all_mp3).pack(side=tk.LEFT)
+        ttk.Button(self.search_frame, text="🔍", command=self.search).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(self.search_frame, text="📋", command=self.paste).pack(side=tk.LEFT, padx=(0, 3))
+        ttk.Button(self.search_frame, text="📻", command=self.load_program, width=4).pack(side=tk.LEFT, padx=(0, 3))
+        ttk.Button(self.search_frame, text="🕐", command=self.load_history, width=4).pack(side=tk.LEFT, padx=(0, 3))
+        # ttk.Button(self.search_frame, text="💾 M3U",  command=self.save_m3u).pack(side=tk.LEFT, padx=(0, 3))
+        # ttk.Button(self.search_frame, text="💿 MP3",  command=self.download_selected_mp3).pack(side=tk.LEFT, padx=(0, 3))
+        # ttk.Button(self.search_frame, text="💿 Скачать все", command=self.download_all_mp3).pack(side=tk.LEFT)
 
-        self.file_count_label = ttk.Label(search_frame, text="")
+        self.file_count_label = ttk.Label(self.search_frame, text="")
         self.file_count_label.pack(side=tk.RIGHT, padx=(10, 0))
         # ====================================
 
         # Список результатов
-        scrollbar = ttk.Scrollbar(list_frame)
+        scrollbar = ttk.Scrollbar(self.list_frame)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        results_hscroll = ttk.Scrollbar(list_frame, orient=tk.HORIZONTAL)
+        results_hscroll = ttk.Scrollbar(self.list_frame, orient=tk.HORIZONTAL)
         results_hscroll.pack(side=tk.BOTTOM, fill=tk.X)
 
         self.results_listbox = tk.Text(
-            list_frame,
+            self.list_frame,
             yscrollcommand=scrollbar.set,
             xscrollcommand=results_hscroll.set,
             font=("Consolas", 10),
             height=15,
             width=50,
-            wrap=tk.NONE
+            wrap=tk.NONE,
+            bg=self.log_colors.get("results_area", {}).get("background", "#0d0d0d")
         )
         self.results_listbox.pack(fill=tk.BOTH, expand=True)
         scrollbar.config(command=self.results_listbox.yview)
@@ -204,24 +216,24 @@ class StaroeRadioPlayer:
         self.results_listbox.bind("<Control-C>", lambda e: self._copy_selection(self.results_listbox))
 
         # ========= Нижняя левая часть — Описание передачи =========
-        info_frame = tk.LabelFrame(left_paned, text="Описание передачи", bg="#212121")
-        info_frame.config(fg="#5E5C5E")
-        left_paned.add(info_frame, height=200)
-
         # Цвета области описания из конфига
         info_colors = self.log_colors.get("track_info", {})
         info_fg = info_colors.get("foreground", "#A7F585")
         info_bg = info_colors.get("background", "#1E1E1E")
         info_link_fg = info_colors.get("link_foreground", "#4ECDC4")
 
-        info_scroll = ttk.Scrollbar(info_frame)
+        self.info_frame = tk.LabelFrame(left_paned, text="Описание передачи", bg=info_bg)
+        self.info_frame.config(fg=_fl_fg)
+        left_paned.add(self.info_frame, height=200)
+
+        info_scroll = ttk.Scrollbar(self.info_frame)
         info_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
         font_size = info_colors.get("font_size", 9)
         font_weight = info_colors.get("font_weight", "normal")
 
         self.info_text = tk.Text(
-            info_frame,
+            self.info_frame,
             height=8,
             font=("Consolas", font_size, font_weight),
             bg=info_bg,
@@ -247,56 +259,74 @@ class StaroeRadioPlayer:
         paned_window.add(right_paned, width=400)
 
         # ========= Плеер =========
-        control_frame = tk.LabelFrame(right_paned, text="Плеер", bg="#212121")
-        control_frame.config(fg="#5E5C5E")
-        right_paned.add(control_frame, height=350)
+        self.control_frame = tk.LabelFrame(right_paned, text="Плеер",
+            bg=self.log_colors.get("player_labels", {}).get("player_area", {}).get("background", "#212121"))
+        self.control_frame.config(fg=_fl_fg)
+        right_paned.add(self.control_frame, height=350)
 
-        btn_frame = ttk.Frame(control_frame)
-        btn_frame.pack(pady=5)
+        _player_bg = self.log_colors.get("player_labels", {}).get("player_area", {}).get("background", "#212121")
 
-        ttk.Button(btn_frame, text="⏪", command=self.prev_track).pack(side=tk.LEFT, padx=2)
-        # ttk.Button(btn_frame, text="▶️", command=self.play_current).pack(side=tk.LEFT, padx=2)
-        self.play_pause_btn = ttk.Button(btn_frame, text="⏸️", command=self.pause)
+        # Стиль Scale — фон совпадает с фоном области плеера
+        self._player_style = ttk.Style()
+        self._player_style.configure("Player.Horizontal.TScale",
+                                     background=_player_bg, troughcolor=_player_bg)
+
+        self.btn_frame = tk.Frame(self.control_frame, bg=_player_bg)
+        self.btn_frame.pack(pady=5)
+
+        ttk.Button(self.btn_frame, text="⏪", command=self.prev_track).pack(side=tk.LEFT, padx=2)
+        # ttk.Button(self.btn_frame, text="▶️", command=self.play_current).pack(side=tk.LEFT, padx=2)
+        self.play_pause_btn = ttk.Button(self.btn_frame, text="⏸️", command=self.pause)
         self.play_pause_btn.pack(side=tk.LEFT, padx=2)
-        # ttk.Button(btn_frame, text="⏹", command=self.stop).pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_frame, text="⏩", command=self.next_track).pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_frame, text="⭐", command=self.add_to_favorites).pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_frame, text="💾", command=self.download_playing_mp3).pack(side=tk.LEFT, padx=2)
-
+        # ttk.Button(self.btn_frame, text="⏹", command=self.stop).pack(side=tk.LEFT, padx=2)
+        ttk.Button(self.btn_frame, text="⏩", command=self.next_track).pack(side=tk.LEFT, padx=2)
+        ttk.Button(self.btn_frame, text="⭐", command=self.add_to_favorites).pack(side=tk.LEFT, padx=2)
+        ttk.Button(self.btn_frame, text="💾", command=self.download_playing_mp3).pack(side=tk.LEFT, padx=2)
+        ttk.Button(self.btn_frame, text="🎨", command=self.open_settings).pack(side=tk.LEFT, padx=2)
 
         # Громкость
-        vol_frame = ttk.Frame(control_frame)
-        vol_frame.pack(pady=10, fill=tk.X)
+        _vol_fg = self.log_colors.get("player_labels", {}).get("volume_label", {}).get("foreground", "#828485")
+        _time_fg = self.log_colors.get("player_labels", {}).get("time_label", {}).get("foreground", "#828485")
 
-        ttk.Label(vol_frame, text="🔊", foreground="#5E5C5E", font=("Segoe UI Emoji", 16)).pack(side=tk.LEFT, padx=(0, 5))
+        self.vol_frame = tk.Frame(self.control_frame, bg=_player_bg)
+        self.vol_frame.pack(pady=10, fill=tk.X)
+
+        self.vol_icon_label = tk.Label(self.vol_frame, text="🔊",
+                                       bg=_player_bg, fg=_vol_fg,
+                                       font=("Segoe UI Emoji", 16))
+        self.vol_icon_label.pack(side=tk.LEFT, padx=(0, 5))
 
         self.volume_var = tk.IntVar(value=80)
 
         self.volume_slider = ttk.Scale(
-            vol_frame,
+            self.vol_frame,
             from_=0,
             to=100,
             variable=self.volume_var,
             orient=tk.HORIZONTAL,
+            style="Player.Horizontal.TScale",
             command=self.set_volume
         )
         self.volume_slider.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        self.volume_label = ttk.Label(vol_frame, text="80%", width=5, foreground="#828485")
+        self.volume_label = tk.Label(self.vol_frame, text="80%", width=5,
+                                     bg=_player_bg, fg=_vol_fg)
         self.volume_label.pack(side=tk.LEFT, padx=(5, 0))
 
         # Прогресс
-        progress_frame = ttk.Frame(control_frame)
-        progress_frame.pack(fill=tk.X, pady=10)
+        self.progress_frame = tk.Frame(self.control_frame, bg=_player_bg)
+        self.progress_frame.pack(fill=tk.X, pady=10)
 
-        self.time_current = ttk.Label(progress_frame, text="00:00", foreground="#828485")
+        self.time_current = tk.Label(self.progress_frame, text="00:00",
+                                     bg=_player_bg, fg=_time_fg)
         self.time_current.pack(side=tk.LEFT, padx=(0, 5))
 
         self.progress_slider = ttk.Scale(
-            progress_frame,
+            self.progress_frame,
             from_=0,
             to=100,
-            orient=tk.HORIZONTAL
+            orient=tk.HORIZONTAL,
+            style="Player.Horizontal.TScale",
         )
         self.progress_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
 
@@ -304,18 +334,20 @@ class StaroeRadioPlayer:
         self.progress_slider.bind("<ButtonRelease-1>", self.end_seek)
         self.progress_slider.bind("<B1-Motion>", self.on_seek_drag)
 
-        self.time_total = ttk.Label(progress_frame, text="00:00", foreground="#828485")
+        self.time_total = tk.Label(self.progress_frame, text="00:00",
+                                   bg=_player_bg, fg=_time_fg)
         self.time_total.pack(side=tk.RIGHT, padx=(5, 0))
 
         # Текущий трек
         player_colors = self.log_colors.get("player_labels", {}).get("current_track", {})
         font_size = player_colors.get("font_size", 10)
         font_weight = player_colors.get("font_weight", "normal")
+        wraplength = player_colors.get("wraplength", 350)
 
         self.current_label = ttk.Label(
-            control_frame,
+            self.control_frame,
             text="Нет трека",
-            wraplength=250,
+            wraplength=wraplength,
             foreground=player_colors.get("foreground", "#D5B491"),
             background=player_colors.get("background", "#212121"),
             font=("Segoe UI", font_size, font_weight)
@@ -323,23 +355,25 @@ class StaroeRadioPlayer:
         self.current_label.pack(pady=10)
 
         # ========= Лог =========
-        log_frame = tk.LabelFrame(right_paned, text="Лог", bg="#212121")
-        log_frame.config(fg="#5E5C5E")
-        right_paned.add(log_frame, height=200)
+        self.log_frame = tk.LabelFrame(right_paned, text="Лог",
+            bg=self.log_colors.get("log_area", {}).get("background", "#212121"))
+        self.log_frame.config(fg=_fl_fg)
+        right_paned.add(self.log_frame, height=200)
 
-        log_scroll = ttk.Scrollbar(log_frame)
+        log_scroll = ttk.Scrollbar(self.log_frame)
         log_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
-        log_hscroll = ttk.Scrollbar(log_frame, orient=tk.HORIZONTAL)
+        log_hscroll = ttk.Scrollbar(self.log_frame, orient=tk.HORIZONTAL)
         log_hscroll.pack(side=tk.BOTTOM, fill=tk.X)
 
         self.log_text = tk.Text(
-            log_frame,
+            self.log_frame,
             height=6,
             font=("Consolas", 9),
             yscrollcommand=log_scroll.set,
             xscrollcommand=log_hscroll.set,
-            wrap=tk.NONE
+            wrap=tk.NONE,
+            bg=self.log_colors.get("log_area", {}).get("background", "#0d0d0d")
         )
         self.log_text.pack(fill=tk.BOTH, expand=True)
         log_scroll.config(command=self.log_text.yview)
@@ -373,6 +407,11 @@ class StaroeRadioPlayer:
         self.paned_window = paned_window
         self.left_paned = left_paned
         self.right_paned = right_paned
+
+        # Гарантируем, что после создания всех виджетов реально применён
+        # именно конфиг цветов (та же логика, что и кнопка «Применить» в настройках),
+        # а не разрозненные дефолты, читавшиеся по ходу создания виджетов.
+        self.apply_colors()
 
     def refresh_files(self):
         data_dir = os.path.join(self.script_dir, "data")
@@ -517,6 +556,18 @@ class StaroeRadioPlayer:
         self.auto_play_enabled = True # Сброс флага при новом воспроизведении
 
         track = self.current_results[self.current_index]
+
+        # Добавляем в стек истории воспроизведения (не дублируем подряд один и тот же трек)
+        if not self.playback_history or self.playback_history[-1].get('id') != track.get('id'):
+            self.playback_history.append(track)
+            # Ограничиваем стек 200 треками
+            if len(self.playback_history) > 200:
+                self.playback_history = self.playback_history[-200:]
+
+        self._play_track_direct(track)
+
+    def _play_track_direct(self, track):
+        """Воспроизвести трек напрямую (без добавления в стек истории)."""
         self.playing_track = track  # Запоминаем реально проигрываемый трек независимо от списка результатов
 
         cfg = self._get_site_cfg(track)
@@ -605,11 +656,27 @@ class StaroeRadioPlayer:
             self.stop()
 
     def prev_track(self):
-        if self.current_results and self.current_index > 0:
-            self.current_index -= 1
-            self._play_and_info()
+        # Если в стеке истории воспроизведения есть предыдущий трек — играем его
+        if len(self.playback_history) >= 2:
+            # Убираем текущий трек из стека
+            self.playback_history.pop()
+            prev = self.playback_history[-1]
+            # Ищем трек в текущих результатах
+            found_idx = None
+            for i, t in enumerate(self.current_results):
+                if not t.get('is_date') and t.get('id') == prev.get('id'):
+                    found_idx = i
+                    break
+            if found_idx is not None:
+                self.current_index = found_idx
+                self.highlight_selected_line()
+            else:
+                self.current_index = -1
+            # Воспроизводим напрямую, без добавления в стек (уже там)
+            self._play_track_direct(prev)
+            threading.Thread(target=self._fetch_track_info, args=(prev,), daemon=True).start()
         else:
-            self.log("📋 Это первый трек в списке")
+            self.log("📋 Нет предыдущего трека в истории воспроизведения")
 
     def set_volume(self, *args):
         volume = int(float(self.volume_var.get()))
@@ -1329,7 +1396,7 @@ class StaroeRadioPlayer:
 
     def _fetch_program(self):
         """Парсим расписание в фоновом потоке."""
-        url = "https://staroeradio.ru/program/full"
+        url = "https://staroeradio.ru/program"
         try:
             req = urllib.request.Request(
                 url,
@@ -1554,11 +1621,11 @@ class StaroeRadioPlayer:
                     "description": "Выбранная строка"
                 }
             },
+            "results_area": {
+                "background": "#000000",
+                "description": "Фон области результатов поиска"
+            },
             "log_tags": {
-                "timestamp": {
-                    "foreground": "#B0BEC5",
-                    "description": "Временная метка"
-                },
                 "success": {
                     "foreground": "#81C784",
                     "description": "Успех"
@@ -1576,33 +1643,60 @@ class StaroeRadioPlayer:
                     "description": "Информация"
                 }
             },
+            "log_area": {
+                "background": "#000000",
+                "description": "Фон области лога"
+            },
             "player_labels": {
                 "current_track": {
                     "foreground": "#D5B491",
-                    "background": "#212121",
+                    "background": "#000000",
                     "font_size": 11,
-                    "font_weight": "italic",
+                    "font_weight": "normal",
+                    "wraplength": 350,
                     "description": "Текущий трек в плеере"
                 },
+                "player_area": {
+                    "background": "#000000",
+                    "description": "Фон области плеера"
+                },
                 "volume_label": {
-                    "foreground": "#FFD700",
-                    "description": "Проценты громкости"
+                    "foreground": "#696c70",
+                    "description": "Эмодзи громкости и проценты"
                 },
                 "time_label": {
-                    "foreground": "#4ECDC4",
+                    "foreground": "#696c70",
                     "description": "Время в прогресс-баре"
                 }
             },
             "track_info": {
                 "foreground": "#64B5F6",
-                "background": "#030303",
+                "background": "#000000",
                 "header_foreground": "#FFB74D",
                 "link_foreground": "#4ECDC4",
                 "font_size": 10,
                 "font_weight": "normal",
                 "description": "Область описания трека"
+            },
+            "frame_labels": {
+                "title_foreground": "#696c70",
+                "description": "Цвет заголовков областей (Результаты поиска, Описание передачи, Плеер, Лог)"
+            },
+            "titlebar": {
+                "background": "#383838",
+                "description": "Цвет заголовка окна Windows (только Windows 10 build 19041+ и Windows 11)"
             }
         }
+
+        def deep_merge(base, override):
+            """Рекурсивно: берём всё из base, перезаписываем тем что есть в override."""
+            result = dict(base)
+            for k, v in override.items():
+                if k in result and isinstance(result[k], dict) and isinstance(v, dict):
+                    result[k] = deep_merge(result[k], v)
+                else:
+                    result[k] = v
+            return result
 
         # Если конфиг не существует, создаём его
         if not os.path.exists(self.colors_file):
@@ -1615,10 +1709,11 @@ class StaroeRadioPlayer:
                 print(f"❌ Ошибка создания конфига: {e}")
                 self.log_colors = default_colors
         else:
-            # Загружаем существующий конфиг
+            # Загружаем существующий конфиг и мёржим с дефолтом
             try:
                 with open(self.colors_file, 'r', encoding='utf-8') as f:
-                    self.log_colors = json.load(f)
+                    loaded = json.load(f)
+                self.log_colors = deep_merge(default_colors, loaded)
                 print(f"✅ Загружен конфиг цветов: {self.colors_file}")
             except Exception as e:
                 print(f"⚠️  Ошибка загрузки конфига, используются стандартные цвета: {e}")
@@ -1637,22 +1732,141 @@ class StaroeRadioPlayer:
         today = datetime.now().strftime("%d.%m.%Y")
         history_file = os.path.join(self.history_dir, f"{today}.txt")
     
-        time_str = datetime.now().strftime("%H:%M:%S")
+        time_str = datetime.now().strftime("%H:%M")
     
         with open(history_file, 'a', encoding='utf-8') as f:
             f.write(f"{time_str}\n")
-            f.write(f"{track['id']} -- {track['title']}\n")
+            f.write(f"{track['id']}\t{track['title']}\n")
             f.write("\n")
     
         self.log(f"📝 Записано в историю: {track['title'][:40]}...")
 
-    def add_to_favorites(self):
-        """Записать текущий трек в favorites.txt"""
-        if self.current_index < 0 or self.current_index >= len(self.current_results):
-            self.log("⚠️ Нет выбранного трека")
+    def load_history(self):
+        """Загрузить историю из папки History и показать в Результатах поиска.
+        Избранное (favorites.txt) выводится вверху, затем история по убыванию даты."""
+        from datetime import datetime
+
+        results = []
+
+        favorites_file = os.path.join(self.history_dir, "favorites.txt")
+        fav_tracks = []
+
+        # ── Избранное ────────────────────────────────────────────────────
+        if os.path.exists(favorites_file):
+            try:
+                with open(favorites_file, 'r', encoding='utf-8') as f:
+                    lines = [l.rstrip('\n') for l in f.readlines()]
+
+                i = 0
+                while i < len(lines):
+                    line = lines[i].strip()
+                    if not line:
+                        i += 1
+                        continue
+                    # Строка вида "дд.мм.гггг чч:мм:сс" — метка времени добавления
+                    # Следующая строка — id\tназвание или название\tназвание
+                    if i + 1 < len(lines) and '\t' in lines[i + 1]:
+                        parts = lines[i + 1].split('\t', 1)
+                        track_id = parts[0].strip()
+                        title = parts[1].strip()
+                        # Определяем source по ID (числовой ID → staroeradio)
+                        source = 'staroeradio.txt'
+                        fav_tracks.append({
+                            'id': track_id,
+                            'title': title,
+                            'source': source,
+                        })
+                        i += 2
+                    else:
+                        i += 1
+            except Exception as e:
+                self.log(f"⚠️ Ошибка чтения избранного: {e}")
+
+        # ── Заголовок «Избранное» и сами треки ──────────────────────────
+        if fav_tracks:
+            results.append({'is_date': True, 'title': '⭐ Избранное', 'id': None})
+            for t in fav_tracks:
+                results.append(t)
+
+        # ── История по датам (убывание) ───────────────────────────────
+        history_files = sorted(
+            glob.glob(os.path.join(self.history_dir, "??.??.????.txt")),
+            reverse=True
+        )
+
+        if not history_files and not fav_tracks:
+            self.log("⚠️ История пуста")
             return
 
-        track = self.current_results[self.current_index]
+        for hf in history_files:
+            date_label = os.path.splitext(os.path.basename(hf))[0]  # дд.мм.гггг
+            day_tracks = []
+
+            try:
+                with open(hf, 'r', encoding='utf-8') as f:
+                    lines = [l.rstrip('\n') for l in f.readlines()]
+
+                i = 0
+                while i < len(lines):
+                    time_line = lines[i].strip()
+                    if not time_line:
+                        i += 1
+                        continue
+                    # Строка времени чч:мм или чч:мм:сс
+                    if len(time_line) >= 5 and time_line[2] == ':':
+                        hhmm = time_line[:5]  # только чч:мм
+                        if i + 1 < len(lines) and lines[i + 1].strip():
+                            track_line = lines[i + 1].strip()
+                            if '\t' in track_line:
+                                parts = track_line.split('\t', 1)
+                                track_id = parts[0].strip()
+                                title = parts[1].strip()
+                            else:
+                                # Старый формат: "ID -- название"
+                                if ' -- ' in track_line:
+                                    parts = track_line.split(' -- ', 1)
+                                    track_id = parts[0].strip()
+                                    title = parts[1].strip()
+                                else:
+                                    track_id = track_line
+                                    title = track_line
+                            source = 'staroeradio.txt'
+                            day_tracks.append({
+                                'id': track_id,
+                                'title': title,
+                                'source': source,
+                                'time': hhmm,
+                            })
+                            i += 2
+                        else:
+                            i += 1
+                    else:
+                        i += 1
+
+            except Exception as e:
+                self.log(f"⚠️ Ошибка чтения {hf}: {e}")
+                continue
+
+            if day_tracks:
+                results.append({'is_date': True, 'title': date_label, 'id': None})
+                results.extend(day_tracks)
+
+        self.current_results = results
+        self.current_index = -1
+        self.update_results_list()
+        count = sum(1 for r in results if not r.get('is_date'))
+        self.log(f"🕐 История загружена: {count} записей")
+
+    def add_to_favorites(self):
+        """Записать текущий трек в favorites.txt"""
+        # Приоритет — реально воспроизводимый трек, затем выбранный в списке
+        track = self.playing_track
+        if track is None:
+            if self.current_index < 0 or self.current_index >= len(self.current_results):
+                self.log("⚠️ Нет выбранного трека")
+                return
+            track = self.current_results[self.current_index]
+
         if track.get('is_date'):
             return
 
@@ -1675,12 +1889,505 @@ class StaroeRadioPlayer:
             f.write(f"{today} {time_str}\n")
             f.write(f"{track['id']}\t{track['title']}\n")
 
-        self.log(f"⭐ Добавлено в избранное: {track['title'][:40]}")        
+        self.log(f"⭐ Добавлено в избранное: {track['title'][:40]}")
+
+    def apply_colors(self):
+        """Применить текущий self.log_colors к виджетам без перезапуска."""
+        cfg = self.log_colors
+
+        # ── Результаты: фон области и search_frame ────────────────
+        ra_bg = cfg.get("results_area", {}).get("background")
+        if ra_bg:
+            self.results_listbox.config(bg=ra_bg)
+            self.list_frame.config(bg=ra_bg)
+            self.search_frame.config(bg=ra_bg)
+        # ── Результаты: теги ──────────────────────────────────────
+        for tag_name, tag_cfg in cfg.get("results_tags", {}).items():
+            fg = tag_cfg.get("foreground")
+            bg = tag_cfg.get("background")
+            kw = {}
+            if fg: kw["foreground"] = fg
+            if bg: kw["background"] = bg
+            if kw:
+                self.results_listbox.tag_config(tag_name, **kw)
+
+        # ── Лог: фон области ──────────────────────────────────────
+        la_bg = cfg.get("log_area", {}).get("background")
+        if la_bg:
+            self.log_text.config(bg=la_bg)
+            self.log_frame.config(bg=la_bg)
+
+        # ── Лог: теги ─────────────────────────────────────────────
+        for tag_name, tag_cfg in cfg.get("log_tags", {}).items():
+            fg = tag_cfg.get("foreground")
+            bg = tag_cfg.get("background")
+            kw = {}
+            if fg: kw["foreground"] = fg
+            if bg: kw["background"] = bg
+            if kw:
+                self.log_text.tag_config(tag_name, **kw)
+
+        # ── Плеер: фон области ────────────────────────────────────
+        pa_bg = cfg.get("player_labels", {}).get("player_area", {}).get("background")
+        if pa_bg:
+            self.control_frame.config(bg=pa_bg)
+            self.btn_frame.config(bg=pa_bg)
+            self.vol_frame.config(bg=pa_bg)
+            self.progress_frame.config(bg=pa_bg)
+            self.vol_icon_label.config(bg=pa_bg)
+            self.volume_label.config(bg=pa_bg)
+            self.time_current.config(bg=pa_bg)
+            self.time_total.config(bg=pa_bg)
+            self._player_style.configure("Player.Horizontal.TScale",
+                                         background=pa_bg, troughcolor=pa_bg)
+
+        # ── Плеер: цвет шрифта громкости и времени ───────────────
+        vl_fg = cfg.get("player_labels", {}).get("volume_label", {}).get("foreground")
+        if vl_fg:
+            self.volume_label.config(fg=vl_fg)
+            self.vol_icon_label.config(fg=vl_fg)
+        tl_fg = cfg.get("player_labels", {}).get("time_label", {}).get("foreground")
+        if tl_fg:
+            self.time_current.config(fg=tl_fg)
+            self.time_total.config(fg=tl_fg)
+
+        # ── Плеер: текущий трек ───────────────────────────────────
+        ct = cfg.get("player_labels", {}).get("current_track", {})
+        ct_fg = ct.get("foreground")
+        ct_bg = ct.get("background")
+        ct_size = ct.get("font_size", 11)
+        ct_weight = ct.get("font_weight", "italic")
+        ct_wrap = ct.get("wraplength", 350)
+        kw = {}
+        if ct_fg: kw["foreground"] = ct_fg
+        if ct_bg: kw["background"] = ct_bg
+        kw["font"] = ("Segoe UI", int(ct_size), ct_weight)
+        kw["wraplength"] = int(ct_wrap)
+        self.current_label.config(**kw)
+
+        # ── Описание трека ────────────────────────────────────────
+        ti = cfg.get("track_info", {})
+        if ti.get("foreground"): self.info_text.config(fg=ti["foreground"])
+        if ti.get("background"):
+            self.info_text.config(bg=ti["background"])
+            self.info_frame.config(bg=ti["background"])
+        ti_size = ti.get("font_size", 10)
+        ti_weight = ti.get("font_weight", "normal")
+        self.info_text.config(font=("Consolas", int(ti_size), ti_weight))
+        if ti.get("link_foreground"):
+            self.info_text.tag_config("link", foreground=ti["link_foreground"])
+        if ti.get("header_foreground"):
+            self.info_text.tag_config("header", foreground=ti["header_foreground"])
+
+        # ── Заголовки областей ────────────────────────────────────
+        fl_fg = cfg.get("frame_labels", {}).get("title_foreground")
+        if fl_fg:
+            self.list_frame.config(fg=fl_fg)
+            self.info_frame.config(fg=fl_fg)
+            self.control_frame.config(fg=fl_fg)
+            self.log_frame.config(fg=fl_fg)
+
+        # ── Заголовок окна Windows ────────────────────────────────
+        tb_bg = cfg.get("titlebar", {}).get("background")
+        if tb_bg:
+            self._set_titlebar_color(tb_bg)
+
+
+
+    def _set_titlebar_color(self, hex_color: str):
+        """Устанавливает цвет заголовка окна через Windows DWM API.
+        Работает на Windows 10 (build 19041+) и Windows 11.
+        На других ОС — молча игнорируется."""
+        try:
+            import ctypes
+            import ctypes.wintypes
+
+            # DWMWA_CAPTION_COLOR = 35 (доступно с Windows 11 build 22000)
+            # DWMWA_USE_IMMERSIVE_DARK_MODE = 20 (Windows 10 19041+)
+            DWMWA_CAPTION_COLOR     = 35
+            DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+
+            hwnd = ctypes.windll.user32.GetParent(self.root.winfo_id())
+
+            # Конвертируем #rrggbb → COLORREF (0x00bbggrr)
+            r = int(hex_color[1:3], 16)
+            g = int(hex_color[3:5], 16)
+            b = int(hex_color[5:7], 16)
+            colorref = ctypes.c_int(b << 16 | g << 8 | r)
+
+            # Пробуем DWMWA_CAPTION_COLOR (Win11)
+            result = ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_CAPTION_COLOR,
+                ctypes.byref(colorref),
+                ctypes.sizeof(colorref)
+            )
+
+            if result != 0:
+                # Fallback: тёмный режим DWM (Win10)
+                dark = ctypes.c_int(1)
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd,
+                    DWMWA_USE_IMMERSIVE_DARK_MODE,
+                    ctypes.byref(dark),
+                    ctypes.sizeof(dark)
+                )
+        except Exception:
+            pass  # не Windows или нет dwmapi — тихо игнорируем
+
+    def open_settings(self):
+        """Открыть окно настроек интерфейса"""
+        win = ColorSettingsWindow(self.root, self)
+        win.grab_set()
 
     def on_closing(self):
         self.save_state()
         self.player.stop()
         self.root.destroy()
+
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Окно настроек интерфейса
+# ═══════════════════════════════════════════════════════════════════
+class ColorSettingsWindow(tk.Toplevel):
+    """Отдельное окно для редактирования colors_config.json с превью."""
+
+    # Человекочитаемые метки для каждого поля
+    FIELD_LABELS = {
+        # results_tags
+        ("results_tags", "number",      "foreground"):   "Результаты: номер трека",
+        ("results_tags", "title",       "foreground"):   "Результаты: название",
+        ("results_tags", "date_header", "foreground"):   "Результаты: заголовок даты",
+        ("results_tags", "time_text",   "foreground"):   "Результаты: время передачи",
+        ("results_tags", "selected",    "foreground"):   "Результаты: выбранная строка (текст)",
+        ("results_tags", "selected",    "background"):   "Результаты: выбранная строка (фон)",
+        # results area
+        ("results_area", None, "background"): "Результаты: фон области",
+        # log_tags
+        ("log_tags", "success",   "foreground"): "Лог: успех (✅)",
+        ("log_tags", "error",     "foreground"): "Лог: ошибка (❌)",
+        ("log_tags", "warning",   "foreground"): "Лог: предупреждение (⚠️)",
+        ("log_tags", "info",      "foreground"): "Лог: информация",
+        # log area
+        ("log_area", None, "background"): "Лог: фон области",
+        # player_labels
+        ("player_labels", "current_track", "foreground"):  "Плеер: текущий трек (текст)",
+        ("player_labels", "current_track", "background"):  "Плеер: текущий трек (фон)",
+        ("player_labels", "current_track", "font_size"):   "Плеер: размер шрифта трека",
+        ("player_labels", "current_track", "font_weight"): "Плеер: жирный/курсив трека",
+        ("player_labels", "current_track", "wraplength"):  "Плеер: ширина переноса (px)",
+        ("player_labels", "player_area",   "background"):  "Плеер: фон области",
+        ("player_labels", "volume_label",  "foreground"):  "Плеер: иконка 🔊 и громкость %",
+        ("player_labels", "time_label",    "foreground"):  "Плеер: время трека",
+        # track_info
+        ("track_info", None, "foreground"):        "Описание: текст",
+        ("track_info", None, "background"):        "Описание: фон",
+        ("track_info", None, "header_foreground"): "Описание: заголовок",
+        ("track_info", None, "link_foreground"):   "Описание: ссылка",
+        ("track_info", None, "font_size"):         "Описание: размер шрифта",
+        ("track_info", None, "font_weight"):       "Описание: жирный/курсив",
+        # frame_labels
+        ("frame_labels", None, "title_foreground"): "Заголовки областей (Плеер, Лог и др.)",
+        # titlebar
+        ("titlebar", None, "background"): "Заголовок окна Windows (фон)",
+    }
+
+    # Поля, которые не цвет, а что-то другое
+    FONT_SIZE_FIELDS  = {"font_size", "wraplength"}
+    FONT_WEIGHT_FIELDS = {"font_weight"}
+
+    SECTION_TITLES = {
+        "results_tags":  "Список результатов — теги",
+        "results_area":  "Список результатов — область",
+        "log_tags":      "Лог — теги",
+        "log_area":      "Лог — область",
+        "player_labels": "Плеер",
+        "track_info":    "Описание трека",
+        "frame_labels":  "Заголовки областей",
+        "titlebar":      "Заголовок окна Windows",
+    }
+
+    def __init__(self, parent, player):
+        super().__init__(parent)
+        self.player = player
+        self.title("🎨 Настройки интерфейса")
+        self.geometry("680x620")
+        self.resizable(True, True)
+        self.configure(bg="#1a1a1a")
+
+        # Рабочая копия конфига
+        import copy
+        self.cfg = copy.deepcopy(player.log_colors)
+
+        # Папка для схем
+        self.schemes_dir = os.path.join(player.script_dir, "color_schemes")
+        os.makedirs(self.schemes_dir, exist_ok=True)
+
+        self._build_ui()
+        self._populate_rows()
+
+    # ── UI ──────────────────────────────────────────────────────────
+    def _build_ui(self):
+        BG = "#1a1a1a"
+
+        # Верхняя панель: схемы
+        top = tk.Frame(self, bg=BG)
+        top.pack(fill=tk.X, padx=8, pady=6)
+
+        tk.Label(top, text="Схема:", bg=BG, fg="#aaaaaa").pack(side=tk.LEFT)
+        self.scheme_var = tk.StringVar()
+        self.scheme_combo = ttk.Combobox(top, textvariable=self.scheme_var, width=22, state="readonly")
+        self.scheme_combo.pack(side=tk.LEFT, padx=(4, 8))
+        self._refresh_schemes()
+
+        ttk.Button(top, text="Загрузить", command=self._load_scheme).pack(side=tk.LEFT, padx=2)
+        ttk.Button(top, text="Сохранить как…", command=self._save_scheme).pack(side=tk.LEFT, padx=2)
+        ttk.Button(top, text="Удалить", command=self._delete_scheme).pack(side=tk.LEFT, padx=2)
+
+        # Разделитель
+        ttk.Separator(self, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=8)
+
+        # Прокручиваемая область параметров
+        container = tk.Frame(self, bg=BG)
+        container.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
+
+        canvas = tk.Canvas(container, bg=BG, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(container, orient=tk.VERTICAL, command=canvas.yview)
+        self.scroll_frame = tk.Frame(canvas, bg=BG)
+
+        self.scroll_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        canvas.create_window((0, 0), window=self.scroll_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        def _on_mousewheel(e):
+            if canvas.winfo_exists():
+                canvas.yview_scroll(int(-1*(e.delta/120)), "units")
+
+        self._mw_id = self.bind_all("<MouseWheel>", _on_mousewheel)
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Нижняя панель: кнопки применения
+        bottom = tk.Frame(self, bg=BG)
+        bottom.pack(fill=tk.X, padx=8, pady=8)
+
+        ttk.Button(bottom, text="✅ Применить",       command=self._apply).pack(side=tk.LEFT, padx=4)
+        ttk.Button(bottom, text="💾 Сохранить в файл", command=self._save_to_file).pack(side=tk.LEFT, padx=4)
+        ttk.Button(bottom, text="↩ Сбросить",         command=self._reset).pack(side=tk.LEFT, padx=4)
+        ttk.Button(bottom, text="✖ Закрыть",          command=self._on_close).pack(side=tk.RIGHT, padx=4)
+
+    def _on_close(self):
+        try:
+            self.unbind_all("<MouseWheel>")
+        except Exception:
+            pass
+        self.destroy()
+
+    # ── Строки редактирования ───────────────────────────────────────
+    def _populate_rows(self):
+        """Создаёт строки для каждого редактируемого параметра."""
+        BG = "#1a1a1a"
+        self.widgets = {}  # key → (type, widget/var)
+
+        # Заголовок секции
+        def section(title):
+            tk.Label(
+                self.scroll_frame, text=f"  {title}",
+                bg="#2a2a2a", fg="#FFD54F",
+                font=("Consolas", 9, "bold"),
+                anchor="w"
+            ).pack(fill=tk.X, pady=(8, 2))
+
+        prev_section = None
+        for key, label in self.FIELD_LABELS.items():
+            section_name = key[0]
+            if section_name != prev_section:
+                section(self.SECTION_TITLES.get(section_name, section_name))
+                prev_section = section_name
+
+            field = key[2]
+            current_val = self._get_cfg_val(key)
+
+            row = tk.Frame(self.scroll_frame, bg=BG)
+            row.pack(fill=tk.X, padx=4, pady=1)
+
+            tk.Label(row, text=label, bg=BG, fg="#cccccc",
+                     width=40, anchor="w",
+                     font=("Consolas", 9)).pack(side=tk.LEFT)
+
+            if field in self.FONT_WEIGHT_FIELDS:
+                # Выпадающий список bold/italic/normal
+                var = tk.StringVar(value=current_val or "normal")
+                cb = ttk.Combobox(row, textvariable=var, width=10,
+                                  values=["normal", "bold", "italic", "bold italic"],
+                                  state="readonly")
+                cb.pack(side=tk.LEFT, padx=4)
+                self.widgets[key] = ("combo", var)
+
+            elif field in self.FONT_SIZE_FIELDS:
+                # Спиннер: для wraplength диапазон 50-1000, для font_size 6-24
+                if field == "wraplength":
+                    frm, to = 50, 1000
+                else:
+                    frm, to = 6, 24
+                var = tk.IntVar(value=int(current_val or (350 if field == "wraplength" else 10)))
+                sp = ttk.Spinbox(row, from_=frm, to=to, textvariable=var, width=6)
+                sp.pack(side=tk.LEFT, padx=4)
+                self.widgets[key] = ("spin", var)
+
+            else:
+                # Цвет: квадрат-превью + поле ввода + кнопка палитры
+                color = current_val or "#ffffff"
+                preview = tk.Label(row, bg=color, width=3, relief="solid", bd=1)
+                preview.pack(side=tk.LEFT, padx=(0, 4))
+
+                var = tk.StringVar(value=color)
+
+                entry = ttk.Entry(row, textvariable=var, width=10,
+                                  font=("Consolas", 9))
+                entry.pack(side=tk.LEFT, padx=(0, 4))
+
+                def _on_entry_change(sv=var, lbl=preview):
+                    v = sv.get().strip()
+                    try:
+                        lbl.winfo_rgb(v)  # валидация
+                        lbl.config(bg=v)
+                    except Exception:
+                        pass
+
+                var.trace_add("write", lambda *a, sv=var, lbl=preview: _on_entry_change(sv, lbl))
+
+                def _pick(sv=var, lbl=preview):
+                    init = sv.get()
+                    try:
+                        result = colorchooser.askcolor(color=init, title="Выберите цвет")
+                    except Exception:
+                        result = (None, None)
+                    if result and result[1]:
+                        sv.set(result[1])
+                        lbl.config(bg=result[1])
+
+                ttk.Button(row, text="🎨", width=3, command=_pick).pack(side=tk.LEFT)
+                self.widgets[key] = ("color", var)
+
+    # ── Чтение / запись значений из рабочей копии cfg ──────────────
+    def _get_cfg_val(self, key):
+        section, subsection, field = key
+        try:
+            if subsection is None:
+                return self.cfg[section].get(field)
+            else:
+                return self.cfg[section][subsection].get(field)
+        except (KeyError, TypeError):
+            return None
+
+    def _set_cfg_val(self, key, value):
+        section, subsection, field = key
+        if subsection is None:
+            self.cfg.setdefault(section, {})[field] = value
+        else:
+            self.cfg.setdefault(section, {}).setdefault(subsection, {})[field] = value
+
+    def _collect_widgets(self):
+        """Переносит значения из виджетов в self.cfg."""
+        for key, (wtype, var) in self.widgets.items():
+            if wtype == "spin":
+                self._set_cfg_val(key, int(var.get()))
+            else:
+                self._set_cfg_val(key, var.get())
+
+    # ── Применить / сохранить / сбросить ───────────────────────────
+    def _apply(self):
+        self._collect_widgets()
+        self.player.log_colors = self.cfg
+        self.player.apply_colors()
+        self.player.log("🎨 Настройки применены")
+
+    def _save_to_file(self):
+        self._collect_widgets()
+        try:
+            with open(self.player.colors_file, 'w', encoding='utf-8') as f:
+                json.dump(self.cfg, f, ensure_ascii=False, indent=2)
+            self.player.log_colors = self.cfg
+            self.player.apply_colors()
+            self.player.log(f"💾 Сохранено в {self.player.colors_file}")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось сохранить:\n{e}")
+
+    def _reset(self):
+        """Перечитать конфиг с диска (отменить несохранённые правки)."""
+        import copy
+        self.player.load_colors_config()
+        self.cfg = copy.deepcopy(self.player.log_colors)
+        # Пересоздаём строки
+        for w in self.scroll_frame.winfo_children():
+            w.destroy()
+        self.widgets = {}
+        self._populate_rows()
+        self.player.log("↩ Настройки сброшены к файлу")
+
+    # ── Схемы ───────────────────────────────────────────────────────
+    def _refresh_schemes(self):
+        files = sorted(glob.glob(os.path.join(self.schemes_dir, "*.json")))
+        names = [os.path.splitext(os.path.basename(f))[0] for f in files]
+        self.scheme_combo["values"] = names
+        if names:
+            self.scheme_var.set(names[0])
+
+    def _save_scheme(self):
+        self._collect_widgets()
+        name = simpledialog.askstring(
+            "Сохранить схему", "Название схемы:", parent=self)
+        if not name:
+            return
+        # Убираем недопустимые символы для имени файла
+        safe = "".join(c for c in name if c not in r'\/:*?"<>|')
+        path = os.path.join(self.schemes_dir, f"{safe}.json")
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(self.cfg, f, ensure_ascii=False, indent=2)
+            self._refresh_schemes()
+            self.scheme_var.set(safe)
+            self.player.log(f"💾 Схема сохранена: {safe}")
+        except Exception as e:
+            messagebox.showerror("Ошибка", str(e))
+
+    def _load_scheme(self):
+        name = self.scheme_var.get()
+        if not name:
+            return
+        path = os.path.join(self.schemes_dir, f"{name}.json")
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                import copy
+                self.cfg = json.load(f)
+            for w in self.scroll_frame.winfo_children():
+                w.destroy()
+            self.widgets = {}
+            self._populate_rows()
+            self.player.log(f"📂 Схема загружена: {name}")
+        except Exception as e:
+            messagebox.showerror("Ошибка", str(e))
+
+    def _delete_scheme(self):
+        name = self.scheme_var.get()
+        if not name:
+            return
+        if not messagebox.askyesno("Удалить?", f"Удалить схему «{name}»?"):
+            return
+        path = os.path.join(self.schemes_dir, f"{name}.json")
+        try:
+            os.remove(path)
+            self._refresh_schemes()
+            self.player.log(f"🗑 Схема удалена: {name}")
+        except Exception as e:
+            messagebox.showerror("Ошибка", str(e))
 
 
 if __name__ == "__main__":
