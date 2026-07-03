@@ -153,8 +153,8 @@ class StaroeRadioPlayer:
         _fl_fg = self.log_colors.get("frame_labels", {}).get("title_foreground", "#5E5C5E")
         _ra_bg = self.log_colors.get("results_area", {}).get("background", "#0d0d0d")
 
-        # Верхняя левая часть - результаты поиска
-        self.list_frame = tk.LabelFrame(left_paned, text="Результаты поиска", bg=_ra_bg)
+        # Верхняя левая часть - поиск
+        self.list_frame = tk.LabelFrame(left_paned, text="Поиск", bg=_ra_bg)
         self.list_frame.config(fg=_fl_fg)
         left_paned.add(self.list_frame, height=350)
 
@@ -178,7 +178,7 @@ class StaroeRadioPlayer:
         self.file_count_label.pack(side=tk.RIGHT, padx=(10, 0))
         # ====================================
 
-        # Список результатов
+        # Список результатов поиска
         scrollbar = ttk.Scrollbar(self.list_frame)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
@@ -200,8 +200,8 @@ class StaroeRadioPlayer:
         results_hscroll.config(command=self.results_listbox.xview)
 
         # Конфигурируем теги для результатов поиска из конфига
-        results_tags = self.log_colors.get("results_tags", {})
-        for tag_name, tag_config in results_tags.items():
+        search_tags = self.log_colors.get("search_tags", {})
+        for tag_name, tag_config in search_tags.items():
             fg = tag_config.get("foreground", "#FFFFFF")
             bg = tag_config.get("background")
             if bg:
@@ -1135,7 +1135,7 @@ class StaroeRadioPlayer:
 
             # Получаем ID трека и полный объект трека, который сейчас воспроизводится или был выбран
             # Приоритет — реально проигрываемый трек (playing_track), он может отличаться
-            # от current_results[current_index], если список результатов изменился после начала воспроизведения
+            # от current_results[current_index], если список результатов поиска изменился после начала воспроизведения
             current_track = self.playing_track
             if current_track is None and 0 <= self.current_index < len(self.current_results):
                 current_track = self.current_results[self.current_index]
@@ -1598,7 +1598,7 @@ class StaroeRadioPlayer:
     def load_colors_config(self):
         """Загрузить конфиг цветов, создать если не существует"""
         default_colors = {
-            "results_tags": {
+            "search_tags": {
                 "number": {
                     "foreground": "#979695",
                     "description": "Номер трека"
@@ -1623,7 +1623,7 @@ class StaroeRadioPlayer:
             },
             "results_area": {
                 "background": "#000000",
-                "description": "Фон области результатов поиска"
+                "description": "Фон области поиска"
             },
             "log_tags": {
                 "success": {
@@ -1680,7 +1680,7 @@ class StaroeRadioPlayer:
             },
             "frame_labels": {
                 "title_foreground": "#696c70",
-                "description": "Цвет заголовков областей (Результаты поиска, Описание передачи, Плеер, Лог)"
+                "description": "Цвет заголовков областей (Поиск, Описание передачи, Плеер, Лог)"
             },
             "titlebar": {
                 "background": "#383838",
@@ -1895,14 +1895,14 @@ class StaroeRadioPlayer:
         """Применить текущий self.log_colors к виджетам без перезапуска."""
         cfg = self.log_colors
 
-        # ── Результаты: фон области и search_frame ────────────────
+        # ── Поиск: фон области и search_frame ────────────────
         ra_bg = cfg.get("results_area", {}).get("background")
         if ra_bg:
             self.results_listbox.config(bg=ra_bg)
             self.list_frame.config(bg=ra_bg)
             self.search_frame.config(bg=ra_bg)
-        # ── Результаты: теги ──────────────────────────────────────
-        for tag_name, tag_cfg in cfg.get("results_tags", {}).items():
+        # ── Поиск: теги ──────────────────────────────────────
+        for tag_name, tag_cfg in cfg.get("search_tags", {}).items():
             fg = tag_cfg.get("foreground")
             bg = tag_cfg.get("background")
             kw = {}
@@ -2055,15 +2055,15 @@ class ColorSettingsWindow(tk.Toplevel):
 
     # Человекочитаемые метки для каждого поля
     FIELD_LABELS = {
-        # results_tags
-        ("results_tags", "number",      "foreground"):   "Результаты: номер трека",
-        ("results_tags", "title",       "foreground"):   "Результаты: название",
-        ("results_tags", "date_header", "foreground"):   "Результаты: заголовок даты",
-        ("results_tags", "time_text",   "foreground"):   "Результаты: время передачи",
-        ("results_tags", "selected",    "foreground"):   "Результаты: выбранная строка (текст)",
-        ("results_tags", "selected",    "background"):   "Результаты: выбранная строка (фон)",
-        # results area
-        ("results_area", None, "background"): "Результаты: фон области",
+        # search_tags
+        ("search_tags", "number",      "foreground"):   "Поиск: номер трека",
+        ("search_tags", "title",       "foreground"):   "Поиск: название",
+        ("search_tags", "date_header", "foreground"):   "Поиск: заголовок даты",
+        ("search_tags", "time_text",   "foreground"):   "Поиск: время передачи",
+        ("search_tags", "selected",    "foreground"):   "Поиск: выбранная строка (текст)",
+        ("search_tags", "selected",    "background"):   "Поиск: выбранная строка (фон)",
+        # search area
+        ("search_area", None, "background"): "Поиск: фон области",
         # log_tags
         ("log_tags", "success",   "foreground"): "Лог: успех (✅)",
         ("log_tags", "error",     "foreground"): "Лог: ошибка (❌)",
@@ -2098,8 +2098,8 @@ class ColorSettingsWindow(tk.Toplevel):
     FONT_WEIGHT_FIELDS = {"font_weight"}
 
     SECTION_TITLES = {
-        "results_tags":  "Список результатов — теги",
-        "results_area":  "Список результатов — область",
+        "search_tags":  "Поиск— теги",
+        "search_area":  "Поиск — область",
         "log_tags":      "Лог — теги",
         "log_area":      "Лог — область",
         "player_labels": "Плеер",

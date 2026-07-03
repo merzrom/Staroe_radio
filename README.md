@@ -47,7 +47,7 @@ pip install -r requirements.txt
 ## Запуск
 
 ```bash
-python SRPlayer.py
+python Player_staroeradio.py
 ```
 
 При первом запуске (если ещё нет `player_state.json`) автоматически загружается
