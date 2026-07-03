@@ -72,7 +72,7 @@ python SRPlayer.py
 Используется PyInstaller с готовым `.spec`-файлом:
 
 ```bash
-pyinstaller SRPlayer.spec
+pyinstaller Player_staroeradio.spec
 ```
 
 Перед сборкой убедитесь, что `libvlc.dll`, `libvlccore.dll` и папка `plugins`
