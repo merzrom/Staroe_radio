@@ -28,6 +28,7 @@ import vlc
 import time
 import subprocess
 import json
+import re
 import threading
 import urllib.request
 import urllib.error
@@ -107,6 +108,18 @@ class StaroeRadioPlayer:
         self.user_seeking = False
         self.auto_play_enabled = True
         self._info_images = []  # Храним ссылки на PhotoImage чтобы GC не удалил
+
+        # Прямой эфир (потоковое радио)
+        self.live_streams = {
+            "music": {"url": "https://staroeradio.ru/radio/music128",   "icon": "🎵",   "label": "Музыка"},
+            "kids":  {"url": "https://staroeradio.ru/radio/detskoe128", "icon": "🧒🏻", "label": "Детское радио"},
+            "old":   {"url": "https://staroeradio.ru/radio/ices128",    "icon": "📻",   "label": "Старое радио"},
+        }
+        self.current_live_stream = "old"
+        self.live_mode_active = False
+        self._live_last_title = None
+        self._icy_thread = None
+        self._icy_stop_event = None
 
         if getattr(sys, 'frozen', False):
             self.script_dir = os.path.dirname(sys.executable)
@@ -283,6 +296,15 @@ class StaroeRadioPlayer:
         ttk.Button(self.btn_frame, text="⭐", command=self.add_to_favorites).pack(side=tk.LEFT, padx=2)
         ttk.Button(self.btn_frame, text="💾", command=self.download_playing_mp3).pack(side=tk.LEFT, padx=2)
         ttk.Button(self.btn_frame, text="🎨", command=self.open_settings).pack(side=tk.LEFT, padx=2)
+
+        self.live_btn = ttk.Button(
+            self.btn_frame,
+            text=self.live_streams[self.current_live_stream]["icon"],
+            width=3,
+            command=self._on_live_btn_click
+        )
+        self.live_btn.pack(side=tk.LEFT, padx=2)
+        self.live_btn.bind("<Button-3>", self._show_live_menu)
 
         # Громкость
         _vol_fg = self.log_colors.get("player_labels", {}).get("volume_label", {}).get("foreground", "#828485")
@@ -568,6 +590,8 @@ class StaroeRadioPlayer:
 
     def _play_track_direct(self, track):
         """Воспроизвести трек напрямую (без добавления в стек истории)."""
+        self.live_mode_active = False  # Выходим из режима прямого эфира при выборе обычного трека
+        self._stop_icy_metadata_thread()
         self.playing_track = track  # Запоминаем реально проигрываемый трек независимо от списка результатов
 
         cfg = self._get_site_cfg(track)
@@ -599,6 +623,18 @@ class StaroeRadioPlayer:
         self.play_pause_btn.config(text="⏸️")
 
     def pause(self):
+        if self.live_mode_active:
+            # Для прямого эфира нет осмысленной паузы — останавливаем/перезапускаем поток
+            if self.player.is_playing():
+                self.player.stop()
+                self.is_playing = False
+                self.play_pause_btn.config(text="▶️")
+                self.log("⏸ Эфир остановлен")
+                self._stop_icy_metadata_thread()
+            else:
+                self.play_live_stream(self.current_live_stream)
+            return
+
         if self.player.is_playing():
             self.player.pause()
             self.is_playing = False
@@ -615,6 +651,8 @@ class StaroeRadioPlayer:
         self.player.stop()
         self.is_playing = False
         self.playing_track = None
+        self.live_mode_active = False
+        self._stop_icy_metadata_thread()
         self.play_pause_btn.config(text="▶️")
         self.auto_play_enabled = False  # Отключаем автовоспроизведение при ручной остановке
         self.current_label.config(text="Нет трека")
@@ -624,6 +662,141 @@ class StaroeRadioPlayer:
         self.log("⏹ Остановлено")
         # Включаем обратно через небольшую задержку, чтобы событие окончания не сработало
         self.root.after(500, lambda: setattr(self, 'auto_play_enabled', True))  
+
+    # ══════════════════════ Прямой эфир ══════════════════════
+    def _on_live_btn_click(self):
+        """ЛКМ по кнопке эфира — запускает текущий выбранный поток."""
+        self.play_live_stream(self.current_live_stream)
+
+    def _show_live_menu(self, event):
+        """ПКМ по кнопке эфира — меню выбора потока."""
+        menu = tk.Menu(self.root, tearoff=0)
+        for key, stream in self.live_streams.items():
+            menu.add_command(
+                label=f"{stream['icon']} {stream['label']}",
+                command=lambda k=key: self.play_live_stream(k)
+            )
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def _update_live_button_icon(self):
+        stream = self.live_streams.get(self.current_live_stream)
+        if stream:
+            self.live_btn.config(text=stream["icon"])
+
+    def play_live_stream(self, key):
+        """Запустить прямой эфир по ключу потока (music/kids/old)."""
+        stream = self.live_streams.get(key)
+        if not stream:
+            return
+
+        self.current_live_stream = key
+        self.live_mode_active = True
+        self.playing_track = None
+        self.auto_play_enabled = False  # автопереход треков не нужен в режиме эфира
+        self._live_last_title = None
+
+        self._update_live_button_icon()
+
+        self.log(f"📡 Прямой эфир: {stream['label']}")
+
+        media = self.instance.media_new(stream["url"])
+        media.add_option(":http-user-agent=Mozilla/5.0")
+
+        self.player.stop()
+        self.player.set_media(media)
+
+        time.sleep(0.1)
+
+        self.player.play()
+        self.player.audio_set_volume(self.volume_var.get())
+
+        self.is_playing = True
+        self.play_pause_btn.config(text="⏸️")
+        self.current_label.config(text=f"{stream['icon']} {stream['label']}")
+
+        # libVLC не отдаёт ICY-метаданные этих потоков (проверено и в самом VLC),
+        # поэтому читаем их отдельным соединением, как это делает AIMP
+        self._start_icy_metadata_thread(stream["url"])
+
+        self.save_state()
+
+    def _start_icy_metadata_thread(self, url):
+        """Запустить фоновый поток чтения ICY-метаданных (StreamTitle) для потока url."""
+        self._stop_icy_metadata_thread()
+        stop_event = threading.Event()
+        self._icy_stop_event = stop_event
+        t = threading.Thread(target=self._icy_metadata_worker, args=(url, stop_event), daemon=True)
+        t.start()
+        self._icy_thread = t
+
+    def _stop_icy_metadata_thread(self):
+        if getattr(self, '_icy_stop_event', None):
+            self._icy_stop_event.set()
+        self._icy_stop_event = None
+
+    def _icy_metadata_worker(self, url, stop_event):
+        """Отдельное HTTP-соединение только для чтения ICY-метаданных (аудио отбрасывается)."""
+        resp = None
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={"Icy-MetaData": "1", "User-Agent": "Mozilla/5.0"}
+            )
+            resp = urllib.request.urlopen(req, timeout=10)
+            metaint = int(resp.headers.get("icy-metaint", 0) or 0)
+            if not metaint:
+                return
+
+            while not stop_event.is_set():
+                remaining = metaint
+                while remaining > 0:
+                    if stop_event.is_set():
+                        return
+                    chunk = resp.read(min(remaining, 8192))
+                    if not chunk:
+                        return
+                    remaining -= len(chunk)
+
+                length_byte = resp.read(1)
+                if not length_byte:
+                    return
+                length = length_byte[0] * 16
+
+                if length > 0:
+                    meta_bytes = resp.read(length)
+                    if not meta_bytes:
+                        return
+                    meta_text = meta_bytes.rstrip(b"\x00").decode("utf-8", errors="ignore")
+                    m = re.search(r"StreamTitle='(.*?)';", meta_text)
+                    if m:
+                        title = m.group(1).strip()
+                        if title:
+                            self.root.after(0, lambda t=title: self._handle_icy_title(t))
+        except Exception:
+            pass
+        finally:
+            try:
+                if resp:
+                    resp.close()
+            except Exception:
+                pass
+
+    def _handle_icy_title(self, title):
+        if not self.live_mode_active:
+            return
+        if title == self._live_last_title:
+            return
+        self._live_last_title = title
+
+        stream = self.live_streams.get(self.current_live_stream, {})
+        icon = stream.get("icon", "📻")
+        label = stream.get("label", "Прямой эфир")
+
+        self.current_label.config(text=f"{icon} {label}\n{title}")
+        self.log(f"🎶 {title}")
 
     def _play_and_info(self):
         """Воспроизвести текущий трек, обновить выделение и загрузить описание."""
@@ -642,6 +815,8 @@ class StaroeRadioPlayer:
 
     def on_track_end(self, event):
         """Автоматический переход к следующему треку при окончании текущего"""
+        if self.live_mode_active:
+            return
         if self.auto_play_enabled:
             self.root.after(0, self.auto_next_track)
 
@@ -708,6 +883,14 @@ class StaroeRadioPlayer:
     def update_position(self):
         try:
             if self.player.is_playing():
+
+                if self.live_mode_active:
+                    if not self.user_seeking:
+                        self.progress_slider.set(0)
+                    self.time_current.config(text="🔴 LIVE")
+                    self.time_total.config(text="--:--")
+                    self.root.after(1000, self.update_position)
+                    return
 
                 current_time = self.player.get_time() // 1000
                 total_time = self.player.get_length() // 1000
@@ -1169,7 +1352,9 @@ class StaroeRadioPlayer:
                 "left_paned_sash_position": left_paned_sash_pos,
                 "right_paned_sash_position": right_paned_sash_pos,
                 "right_paned_sash2_position": right_paned_sash2_pos,
-                "last_save_dir": self.last_save_dir
+                "last_save_dir": self.last_save_dir,
+                "current_live_stream": self.current_live_stream,
+                "live_mode_active": self.live_mode_active
             }
 
             with open(self.state_file, 'w', encoding='utf-8') as f:
@@ -1233,6 +1418,13 @@ class StaroeRadioPlayer:
             if saved_dir and os.path.isdir(saved_dir):
                 self.last_save_dir = saved_dir
 
+            # Восстанавливаем выбранный поток прямого эфира
+            self.current_live_stream = state.get("current_live_stream", self.current_live_stream)
+            if self.current_live_stream not in self.live_streams:
+                self.current_live_stream = "old"
+            self._update_live_button_icon()
+            live_was_active = state.get("live_mode_active", False)
+
             # Восстанавливаем результаты поиска
             self.current_results = state.get("current_results", [])
             self.current_index = state.get("current_index", -1)
@@ -1277,7 +1469,10 @@ class StaroeRadioPlayer:
             # Восстанавливаем позицию плеера
             player_position = state.get("player_position", -1)
 
-            if player_position > 0 and current_track:
+            if live_was_active:
+                # Был активен прямой эфир — перезапускаем выбранный поток
+                self.root.after(500, lambda: self.play_live_stream(self.current_live_stream))
+            elif player_position > 0 and current_track:
                 # Запускаем трек и устанавливаем позицию
                 self.root.after(500, lambda t=current_track: self._restore_playback(t, player_position))
 
@@ -1288,6 +1483,8 @@ class StaroeRadioPlayer:
         """Восстановить воспроизведение с сохранённой позиции для указанного трека,
         независимо от текущих результатов поиска."""
         try:
+            self.live_mode_active = False
+            self._stop_icy_metadata_thread()
             cfg = self._get_site_cfg(track)
             url = cfg['stream'].format(id=track['id'])
 
@@ -2042,6 +2239,7 @@ class StaroeRadioPlayer:
 
     def on_closing(self):
         self.save_state()
+        self._stop_icy_metadata_thread()
         self.player.stop()
         self.root.destroy()
 
