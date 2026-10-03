@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['Player_staroeradio19_18(1).py'],
+    ['Staroe_radio_v7.py'],
     pathex=[],
     binaries=[],
     datas=[],
@@ -19,20 +19,26 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
-    name='Player_staroeradio19_18(1)_no_console',
+    exclude_binaries=True,
+    name='Staroe_radio_v7_no_console',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+)
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='Staroe_radio_v7_no_console',
 )

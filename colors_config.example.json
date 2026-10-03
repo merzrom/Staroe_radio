@@ -1,5 +1,5 @@
 {
-  "results_tags": {
+  "search_tags": {
     "number": {
       "foreground": "#979695",
       "description": "Номер трека"
@@ -24,7 +24,7 @@
   },
   "results_area": {
     "background": "#000000",
-    "description": "Фон области результатов поиска"
+    "description": "Фон области поиска"
   },
   "log_tags": {
     "success": {
@@ -81,7 +81,7 @@
   },
   "frame_labels": {
     "title_foreground": "#696c70",
-    "description": "Цвет заголовков областей (Результаты поиска, Описание передачи, Плеер, Лог)"
+    "description": "Цвет заголовков областей (Поиск, Описание передачи, Плеер, Лог)"
   },
   "titlebar": {
     "background": "#383838",
